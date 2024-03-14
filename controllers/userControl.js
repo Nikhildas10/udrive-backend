@@ -2,48 +2,41 @@ const express = require("express");
 const userModel = require("../models/userModel");
 const bcrypt = require("bcrypt");
 const router = express.Router();
-const jwt = require("jsonwebtoken");
-require("dotenv").config();
 
- const signup = async (req, res) => {
+const {
+  generateAccessToken,
+  generateRefreshToken,
+  setCookies,
+} = require("../utils/jwt");
+
+const signup = async (req, res) => {
   const { username, email, password } = req.body;
   const userExists = await userModel.findOne({ email });
   if (userExists) {
     return res.json({ message: "User already exists" });
   }
-  const hashedPassword = await bcrypt.hash(password, 10);
-  const newUser = new userModel({ email, password: hashedPassword, username });
+  const newUser = new userModel({ email, password, username });
   await newUser.save();
   return res.json({ message: "User registered" });
 };
 
- const login = async (req, res) => {
+const login = async (req, res) => {
   const { email, password } = req.body;
   const userExists = await userModel.findOne({ email });
   if (!userExists) {
-    return res.json({ message: "user not registered" });
+    return res.json({ message: "User not registered" });
   }
   const validPassword = await bcrypt.compare(password, userExists.password);
   if (!validPassword) {
-    return res.json({ message: "invalid password" });
+    return res.json({ message: "Invalid password" });
   }
-  const accessToken = jwt.sign(
-    { username: userModel.username },
-    `${process.env.ACCESS_KEY}`,
-    { expiresIn: "5m" }
-  );
-  const refreshToken = jwt.sign(
-    { username: userModel.username },
-    `${process.env.REFRESH_KEY}`,
-    { expiresIn: "5d" }
-  );
-  res.cookie("accessToken", accessToken, { maxAge: 60000 });
-  res.cookie("refreshToken", refreshToken, {
-    maxAge: 60000,
-    httpOnly: true,
-    secure: true,
-  });
-  return res.json({ status: true, message: "user logged in successfully" });
+
+  const accessToken = generateAccessToken(userExists.username);
+  const refreshToken = generateRefreshToken(userExists.username);
+
+  setCookies(res, accessToken, refreshToken);
+
+  return res.json({ status: true, message: "User logged in successfully" });
 };
 
 module.exports = {
